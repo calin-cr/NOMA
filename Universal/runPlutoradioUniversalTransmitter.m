@@ -8,7 +8,13 @@ function runPlutoradioUniversalTransmitter(prmUniversalTransmitter)
 % Copyright 2017-2023 The MathWorks, Inc.
 
 persistent hTx radio
-if isempty(hTx)
+if coder.target('MATLAB')
+    cleanupObj = onCleanup(@()cleanupTransmitter()); %#ok<NASGU>
+else
+    cleanupObj = []; %#ok<NASGU>
+end
+
+if isempty(hTx) || ~isvalid(hTx)
     cfg = helperModulationConfig(prmUniversalTransmitter.ModulationOrder);
     hTx = UniversalTransmitter(...
         'ModulationOrder',              cfg.ModulationOrder, ...
@@ -46,7 +52,20 @@ if currentTime ~= 0
     disp('Transmission has ended')
 end
 
-release(hTx);
-release(radio);
+if ~coder.target('MATLAB')
+    cleanupTransmitter();
+end
+
+    function cleanupTransmitter()
+        if ~isempty(hTx) && isvalid(hTx)
+            release(hTx);
+        end
+        hTx = [];
+
+        if ~isempty(radio) && isvalid(radio)
+            release(radio);
+        end
+        radio = [];
+    end
 
 end
