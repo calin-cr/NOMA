@@ -57,15 +57,19 @@ if ~coder.target('MATLAB')
 end
 
     function cleanupTransmitter()
-        if ~isempty(hTx) && isvalid(hTx)
+        if exist('hTx', 'var') && ~isempty(hTx) && isvalid(hTx)
             release(hTx);
         end
-        hTx = [];
+        if exist('hTx', 'var')
+            hTx = [];
+        end
 
-        if ~isempty(radio) && isvalid(radio)
+        if exist('radio', 'var') && ~isempty(radio) && isvalid(radio)
             release(radio);
         end
-        radio = [];
+        if exist('radio', 'var')
+            radio = [];
+        end
     end
 
 end
