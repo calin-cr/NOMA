@@ -50,11 +50,18 @@ end
 currentTime = 0;
 BER = [];
 num_frames = floor(prmUniversalReceiver.StopTime*radio.BasebandSampleRate/radio.SamplesPerFrame);
-rcvdSignal = complex(zeros(prmUniversalReceiver.PlutoFrameLength, num_frames));
+frameLength = radio.SamplesPerFrame;
+rcvdSignal = complex(zeros(frameLength, num_frames));
 
 cnt = 1;
 while currentTime <  prmUniversalReceiver.StopTime && cnt<=num_frames
-    rcvdSignal(:,cnt) = radio();
+    samples = radio();
+    samples = samples(:);
+    if numel(samples) ~= frameLength
+        error('runPlutoradioUniversalReceiver:UnexpectedFrameLength', ...
+            'Radio returned %d samples, expected %d.', numel(samples), frameLength);
+    end
+    rcvdSignal(:,cnt) = samples;
     [~, ~, ~, BER] = rx(rcvdSignal(:,cnt));
     currentTime=currentTime+(radio.SamplesPerFrame / radio.BasebandSampleRate);
     cnt = cnt+1;
