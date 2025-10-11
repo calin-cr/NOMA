@@ -14,7 +14,7 @@ signal processing chain lives in helper functions alongside them.
 | `defaultLinkParameters.m` | Produce synchronized default parameter sets for both sessions. |
 | `runLinkTransmitter.m` | Implement waveform generation, filtering, and SDR streaming. |
 | `runLinkReceiver.m` | Implement synchronization, demodulation, plotting, and BER metrics. |
-| `createModulator.m` / `createDemodulator.m` | Build modulation and demodulation helpers plus carrier config. |
+| `createModulator.m` / `createDemodulator.m` | Instantiate modem System objects. |
 | `bitsToSymbols.m` | Convert binary data to M-ary symbol indices. |
 
 ## Running the link

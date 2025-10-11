@@ -11,8 +11,7 @@ function stats = runLinkReceiver(rx, common)
         common struct
     end
 
-    [demodulator, bitsPerSymbol, carrier] = createDemodulator(common.modulation);
-    [~, ~, referenceConstellation] = createModulator(common.modulation);
+    [demodulator, bitsPerSymbol, carrierMode] = createDemodulator(common.modulation);
 
     basebandSampleRate = common.symbolRate * common.samplesPerSymbol;
     frameSymbolCount   = common.frameLength;
@@ -38,7 +37,7 @@ function stats = runLinkReceiver(rx, common)
         "Gain",               rx.gain, ...
         "OutputDataType",     "single");
 
-    agc = comm.AGC("AveragingLength", 32, "MaximumGain", 60, "DesiredOutputPower", -5);
+    agc = comm.AGC("AveragingLength", 32, "MaxGain", 60, "DesiredOutputPower", -5);
     dcBlocker = dsp.DCBlocker("Algorithm", "IIR", "Length", 32);
     rxFilter = comm.RaisedCosineReceiveFilter( ...
         "RolloffFactor", common.rolloff, ...
@@ -50,13 +49,12 @@ function stats = runLinkReceiver(rx, common)
         "SamplesPerSymbol", common.samplesPerSymbol, ...
         "DampingFactor", 1.0, ...
         "NormalizedLoopBandwidth", 0.01);
-    carrierSync = createCarrierSynchronizer(carrier);
+    carrierSync = createCarrierSynchronizer(carrierMode);
 
     constDiagram = comm.ConstellationDiagram( ...
         "Title", "Received Symbols", ...
         "AveragingLength", rx.constellationFrames, ...
-        "ShowReferenceConstellation", true, ...
-        "ReferenceConstellation", referenceConstellation);
+        "ShowReferenceConstellation", true);
     spectrumScope = dsp.SpectrumAnalyzer( ...
         "SampleRate", basebandSampleRate, ...
         "Title", "Received Spectrum", ...
@@ -72,15 +70,8 @@ function stats = runLinkReceiver(rx, common)
     bitErrors = 0;
     bitsCompared = 0;
 
-    stopAfter = rx.stopAfterFrames;
-    isContinuous = isinf(stopAfter);
-    if isContinuous
-        fprintf("Starting continuous reception. Press Ctrl+C in MATLAB to stop.\n");
-    else
-        fprintf("Starting reception of up to %d frame(s).\n", stopAfter);
-    end
-
-    while isContinuous || framesProcessed < stopAfter
+    fprintf("Starting reception.\n");
+    while framesProcessed < rx.stopAfterFrames
         [rxSamples, isValid] = rxRadio();
         if ~isValid
             warning("Pluto did not return valid samples; retrying...");
@@ -143,14 +134,16 @@ function stats = runLinkReceiver(rx, common)
     fprintf("  BER              : %.3g\n", ber);
 end
 
-function sync = createCarrierSynchronizer(cfg)
+function sync = createCarrierSynchronizer(mode)
 %createCarrierSynchronizer Instantiate a carrier recovery object
-    arguments
-        cfg struct
+    switch mode
+        case "QPSK"
+            sync = comm.CarrierSynchronizer("Modulation", "QPSK", "SamplesPerSymbol", 1);
+        case "PSK"
+            sync = comm.CarrierSynchronizer("Modulation", "PSK", "SamplesPerSymbol", 1);
+        case "QAM"
+            sync = comm.CarrierSynchronizer("Modulation", "QAM", "SamplesPerSymbol", 1);
+        otherwise
+            error("Unsupported carrier synchronizer mode %s", mode);
     end
-
-    sync = comm.CarrierSynchronizer( ...
-        "Modulation",           char(cfg.mode), ...
-        "ModulationPhaseOffset", cfg.phaseOffset, ...
-        "SamplesPerSymbol",    1);
 end

@@ -1,9 +1,9 @@
-function [demodulator, bitsPerSymbol, carrier] = createDemodulator(name)
+function [demodulator, bitsPerSymbol, carrierMode] = createDemodulator(name)
 %createDemodulator Construct a symbol demodulator for the link scripts
 %
-%   [DEMODULATOR, BITSPERSYMBOL, CARRIER] = createDemodulator(NAME) returns
-%   a function handle that maps received constellation points to binary
-%   data, along with carrier recovery configuration metadata.
+%   [DEMODULATOR, BITSPERSYMBOL, CARRIERMODE] = createDemodulator(NAME)
+%   returns a function handle that maps received constellation points to
+%   binary data, along with metadata used by the receiver chain.
 
     arguments
         name (1,1) string
@@ -12,31 +12,30 @@ function [demodulator, bitsPerSymbol, carrier] = createDemodulator(name)
     switch upper(name)
         case "BPSK"
             M = 2;
-            phaseOffset = pi/4;
-            demodFcn = @(samples)pskdemod(samples, M, phaseOffset, "gray", OutputType="bit");
-            carrier = struct("mode", "BPSK", "phaseOffset", phaseOffset);
+            demodObj = comm.PSKDemodulator(M, PhaseOffset=pi/4, BitOutput=true);
+            carrierMode = "PSK";
         case "QPSK"
             M = 4;
-            phaseOffset = pi/4;
-            demodFcn = @(samples)pskdemod(samples, M, phaseOffset, "gray", OutputType="bit");
-            carrier = struct("mode", "QPSK", "phaseOffset", phaseOffset);
+            demodObj = comm.PSKDemodulator(M, PhaseOffset=pi/4, BitOutput=true);
+            carrierMode = "QPSK";
         case "8PSK"
             M = 8;
-            phaseOffset = pi/8;
-            demodFcn = @(samples)pskdemod(samples, M, phaseOffset, "gray", OutputType="bit");
-            carrier = struct("mode", "8PSK", "phaseOffset", phaseOffset);
+            demodObj = comm.PSKDemodulator(M, PhaseOffset=pi/8, BitOutput=true);
+            carrierMode = "PSK";
         case "16QAM"
             M = 16;
-            demodFcn = @(samples)qamdemod(samples, M, 0, "gray", OutputType="bit");
-            carrier = struct("mode", "16QAM", "phaseOffset", 0);
+            demodObj = comm.RectangularQAMDemodulator(M, BitOutput=true, ...
+                NormalizationMethod="Average power");
+            carrierMode = "QAM";
         case "64QAM"
             M = 64;
-            demodFcn = @(samples)qamdemod(samples, M, 0, "gray", OutputType="bit");
-            carrier = struct("mode", "64QAM", "phaseOffset", 0);
+            demodObj = comm.RectangularQAMDemodulator(M, BitOutput=true, ...
+                NormalizationMethod="Average power");
+            carrierMode = "QAM";
         otherwise
             error("Unsupported modulation %s", name);
     end
 
     bitsPerSymbol = log2(M);
-    demodulator = @(samples)demodFcn(samples(:));
+    demodulator = @(samples)demodObj(samples);
 end
