@@ -12,30 +12,32 @@ function [demodulator, bitsPerSymbol, carrierMode] = createDemodulator(name)
     switch upper(name)
         case "BPSK"
             M = 2;
-            demodObj = comm.PSKDemodulator(M, PhaseOffset=pi/4, BitOutput=true);
+            phaseOffset = pi/4;
             carrierMode = "PSK";
+            demodSymbolFcn = @(samples) pskdemod(samples, M, phaseOffset);
         case "QPSK"
             M = 4;
-            demodObj = comm.PSKDemodulator(M, PhaseOffset=pi/4, BitOutput=true);
+            phaseOffset = pi/4;
             carrierMode = "QPSK";
+            demodSymbolFcn = @(samples) pskdemod(samples, M, phaseOffset);
         case "8PSK"
             M = 8;
-            demodObj = comm.PSKDemodulator(M, PhaseOffset=pi/8, BitOutput=true);
+            phaseOffset = pi/8;
             carrierMode = "PSK";
+            demodSymbolFcn = @(samples) pskdemod(samples, M, phaseOffset);
         case "16QAM"
             M = 16;
-            demodObj = comm.RectangularQAMDemodulator(M, BitOutput=true, ...
-                NormalizationMethod="Average power");
             carrierMode = "QAM";
+            demodSymbolFcn = @(samples) qamdemod(samples, M, UnitAveragePower=true);
         case "64QAM"
             M = 64;
-            demodObj = comm.RectangularQAMDemodulator(M, BitOutput=true, ...
-                NormalizationMethod="Average power");
             carrierMode = "QAM";
+            demodSymbolFcn = @(samples) qamdemod(samples, M, UnitAveragePower=true);
         otherwise
             error("Unsupported modulation %s", name);
     end
 
     bitsPerSymbol = log2(M);
-    demodulator = @(samples)demodObj(samples);
+    symbolsToBits = @(symbols) reshape(de2bi(symbols, bitsPerSymbol, "left-msb").', [], 1);
+    demodulator = @(samples) symbolsToBits(demodSymbolFcn(samples));
 end
