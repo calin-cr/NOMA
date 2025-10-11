@@ -13,26 +13,27 @@ function [modulator, bitsPerSymbol, constellation] = createModulator(name)
     switch upper(name)
         case "BPSK"
             M = 2;
-            modObj = comm.PSKModulator(M, PhaseOffset=pi/4, BitInput=false);
+            phaseOffset = pi/4;
+            modFcn = @(symbols) pskmod(symbols, M, phaseOffset, InputType="integer");
         case "QPSK"
             M = 4;
-            modObj = comm.PSKModulator(M, PhaseOffset=pi/4, BitInput=false);
+            phaseOffset = pi/4;
+            modFcn = @(symbols) pskmod(symbols, M, phaseOffset, InputType="integer");
         case "8PSK"
             M = 8;
-            modObj = comm.PSKModulator(M, PhaseOffset=pi/8, BitInput=false);
+            phaseOffset = pi/8;
+            modFcn = @(symbols) pskmod(symbols, M, phaseOffset, InputType="integer");
         case "16QAM"
             M = 16;
-            modObj = comm.RectangularQAMModulator(M, BitInput=false, ...
-                NormalizationMethod="Average power");
+            modFcn = @(symbols) qammod(symbols, M, UnitAveragePower=true, InputType="integer");
         case "64QAM"
             M = 64;
-            modObj = comm.RectangularQAMModulator(M, BitInput=false, ...
-                NormalizationMethod="Average power");
+            modFcn = @(symbols) qammod(symbols, M, UnitAveragePower=true, InputType="integer");
         otherwise
             error("Unsupported modulation %s", name);
     end
 
     bitsPerSymbol = log2(M);
-    constellation = modObj((0:M-1).');
-    modulator = @(symbols)modObj(symbols);
+    constellation = modFcn((0:M-1).');
+    modulator = @(symbols)modFcn(symbols);
 end
