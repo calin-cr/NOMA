@@ -37,7 +37,14 @@ function stats = runLinkReceiver(rx, common)
         "Gain",               rx.gain, ...
         "OutputDataType",     "single");
 
-    agc = comm.AGC("AveragingLength", 32, "MaximumGain", 60, "DesiredOutputPower", -5);
+    agc = comm.AGC("AveragingLength", 32, "DesiredOutputPower", -5);
+    if isprop(agc, "MaximumGain")
+        agc.MaximumGain = 60;
+    elseif isprop(agc, "MaxGain")
+        agc.MaxGain = 60;
+    else
+        warning("AGC object does not support setting maximum gain; using default value.");
+    end
     dcBlocker = dsp.DCBlocker("Algorithm", "IIR", "Length", 32);
     rxFilter = comm.RaisedCosineReceiveFilter( ...
         "RolloffFactor", common.rolloff, ...
