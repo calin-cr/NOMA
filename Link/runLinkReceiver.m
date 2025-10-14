@@ -37,7 +37,8 @@ function stats = runLinkReceiver(rx, common)
         "Gain",               rx.gain, ...
         "OutputDataType",     "single");
 
-    agc = comm.AGC("AveragingLength", 32, "DesiredOutputPower", -5);
+    desiredOutputPower = db2pow(-5); % Convert desired output power from dB to linear scale.
+    agc = comm.AGC("AveragingLength", 32, "DesiredOutputPower", desiredOutputPower);
     if isprop(agc, "MaximumGain")
         agc.MaximumGain = 60;
     elseif isprop(agc, "MaxGain")
