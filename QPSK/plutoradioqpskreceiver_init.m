@@ -70,3 +70,4 @@ SimParams.PlutoFrameLength          = SimParams.Interpolation * SimParams.FrameS
 % Experiment parameters
 SimParams.PlutoFrameTime = SimParams.PlutoFrameLength / SimParams.PlutoFrontEndSampleRate;
 SimParams.StopTime = 10;
+SimParams.LogSignalMetrics = false;           % Enable verbose per-frame diagnostics when true
