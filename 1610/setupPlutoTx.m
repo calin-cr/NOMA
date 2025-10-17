@@ -1,6 +1,8 @@
 function tx = setupPlutoTx(p)
-tx = sdrtx('Pluto');
-tx.CenterFrequency = p.CenterFrequency;
-tx.BasebandSampleRate = p.SampleRate;
-tx.Gain = p.TxGain;
+%SETUPPLUTOTX Configure an ADALM-PLUTO transmitter for the experiment.
+
+tx = sdrtx('Pluto', ...
+    'CenterFrequency',    p.CenterFrequency, ...
+    'BasebandSampleRate', p.SampleRate, ...
+    'Gain',               p.TxGain);
 end
