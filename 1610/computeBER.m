@@ -111,9 +111,9 @@ for frameIdx = 1:numFrames
         rxSync = rxBB(1:p.SamplesPerSymbol:end);
     end
 
-    if numel(rxSync) < numel(refSym)
-        warning('Frame %d shorter (%d sym) than expected (%d). Skipping.', ...
-            frameIdx, numel(rxSync), numel(refSym));
+    if numel(rxSync) < p.PreambleSymbols
+        warning('Frame %d shorter (%d sym) than preamble length (%d). Skipping.', ...
+            frameIdx, numel(rxSync), p.PreambleSymbols);
         reset(rxFilt);
         if p.EnableSync
             reset(cfc); reset(symSync); reset(carrierSync);
@@ -138,13 +138,9 @@ for frameIdx = 1:numFrames
 
     stopIdx  = startIdx + numel(refSym) - 1;
     if stopIdx > numel(rxSync)
-        warning('Aligned frame %d truncated (%d < %d). Skipping.', ...
+        warning('Aligned frame %d truncated (%d < %d). Continuing with available symbols.', ...
             frameIdx, numel(rxSync), stopIdx);
-        reset(rxFilt);
-        if p.EnableSync
-            reset(cfc); reset(symSync); reset(carrierSync);
-        end
-        continue;
+        stopIdx = numel(rxSync);
     end
 
     rxFrameSym = rxSync(startIdx:stopIdx);
