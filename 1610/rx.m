@@ -1,11 +1,13 @@
 clear; clc;
+
 p = getParameters();
-rxx = setupPlutoRx(p);
+rx = setupPlutoRx(p);
+cleanup = onCleanup(@() release(rx)); %#ok<NASGU>
 
-pause(1);  % allow hardware to stabilize
-disp('Receiving...');
-rxData = rxx(); 
-release(rxx);
+pause(0.5);  % allow hardware to settle
+fprintf('Capturing %d frames of %d samples each...\n', p.NumRxFrames, p.SamplesPerFrame);
 
-ber = computeBER(rxData,p);
-fprintf('BER: %.3e\n', ber);
+rxData = collectPlutoFrames(rx, p);
+
+ber = computeBER(rxData, p);
+fprintf('Measured BER: %.3e\n', ber);
