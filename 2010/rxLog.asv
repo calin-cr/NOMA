@@ -1,0 +1,30 @@
+% qpsk_receiver_experiment.m
+clear all;
+
+% Params (set manually to match Tx each run)
+Rsym = 0.2e6;   
+mod = 4;
+freq = 915e6;
+gain = 10;
+r_off=0.5;
+N_samples = 5;   % number of repetitions
+verb=true;
+
+% Results file
+resultsFile = 'experiment_results.mat';
+
+for samplenum = 1:N_samples
+    % Receiver parameter structure
+    prmQPSKReceiver = plutoradioqpskreceiver_init(Rsym, mod, freq, gain,r_off,verb);
+    prmQPSKReceiver.Address = 'usb:0';
+    
+    printReceivedData = false;
+    BER = runPlutoradioQPSKReceiver(prmQPSKReceiver, printReceivedData, samplenum);
+    
+    fprintf('Error rate = %f.\n', BER(1));
+    fprintf('Detected errors = %d.\n', BER(2));
+    fprintf('Compared samples = %d.\n', BER(3));
+    
+    % Log results to file
+    logResults(resultsFile, Rsym, mod, freq, gain, BER);
+end
