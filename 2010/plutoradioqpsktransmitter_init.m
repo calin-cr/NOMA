@@ -21,6 +21,9 @@ SimParams.PayloadLength   = SimParams.NumberOfMessage * SimParams.MessageLength 
 SimParams.FrameSize       = (SimParams.HeaderLength + SimParams.PayloadLength) ...
     / log2(SimParams.ModulationOrder);                                    % Frame size in symbols
 SimParams.FrameTime       = SimParams.Tsym*SimParams.FrameSize;
+SimParams.ModulatedHeader = sqrt(2)/2 * (-1-1i) * ...
+    repmat(SimParams.BarkerCode(:), 2, 1);
+SimParams.PreambleDetectionThreshold = 0.8;
 
 %% Tx parameters
 SimParams.RolloffFactor     = r_off;                                        % Rolloff Factor of Raised Cosine Filter
@@ -37,6 +40,22 @@ for msgCnt = 0 : 99
 end
 bits = de2bi(msgSet, 7, 'left-msb')';
 SimParams.MessageBits = bits(:);
+
+% Default NOMA configuration (can be overridden by updating the struct
+% field after initialization)
+SimParams.PowerAllocation = [0.75 0.25];
+
+SimParams.PowerAllocation = SimParams.PowerAllocation(:).';
+SimParams.PowerAllocation = SimParams.PowerAllocation / sum(SimParams.PowerAllocation);
+SimParams.NumUsers = numel(SimParams.PowerAllocation);
+SimParams.NOMAEnabled = SimParams.NumUsers > 1;
+
+userBits = repmat(SimParams.MessageBits, 1, SimParams.NumUsers);
+SimParams.UserMessageBits = userBits;
+SimParams.UserNames = arrayfun(@(u) sprintf('User%u', u), 1:SimParams.NumUsers, ...
+    'UniformOutput', false);
+
+SimParams.TransmitLogFile = fullfile(pwd, 'noma_tx_log.mat');
 
 % Pluto transmitter parameters
 SimParams.PlutoCenterFrequency      = freq;

@@ -1,10 +1,17 @@
 function BER = runPlutoradioQPSKReceiver(prmQPSKReceiver, printData, samplenum)
+% Extended Pluto receiver that can optionally persist raw IQ snapshots for
+% offline successive interference cancellation experiments. When
+% prmQPSKReceiver.LogCaptures is true, the function saves per-frame data to
+% the requested MAT-file, including the synchronized constellation and the
+% descrambled payload bits (when Preview mode is enabled).
+%
+% Copyright 2017-2024
 
-%   Copyright 2017-2022 The MathWorks, Inc.
-
-
-persistent rx radio constDiag;
+persistent rx radio constDiag captureLog loggingEnabled
 if isempty(rx)
+    previewFlag = isfield(prmQPSKReceiver, 'EnablePreview') && ...
+        prmQPSKReceiver.EnablePreview;
+
     rx  = QPSKReceiver(...
         'ModulationOrder',                      prmQPSKReceiver.ModulationOrder, ...
         'SampleRate',                           prmQPSKReceiver.Fs, ...
@@ -31,10 +38,39 @@ if isempty(rx)
         'DescramblerPolynomial',                prmQPSKReceiver.ScramblerPolynomial, ...
         'DescramblerInitialConditions',         prmQPSKReceiver.ScramblerInitialConditions,...
         'BerMask',                              prmQPSKReceiver.BerMask, ...
-        'PrintOption',                          printData);
-    
-    % Create and configure the Pluto System object.
-    radio = sdrrx('Pluto');
+        'PrintOption',                          printData, ...
+        'Preview',                              previewFlag);
+
+    % Create and configure the Pluto System object. When the Analog Devices
+    % libiio library is not available (for example, on a host without the SDR
+    % support package installed), provide a descriptive error that callers can
+    % catch to fall back to offline processing.
+    try
+        radio = sdrrx('Pluto');
+    catch ME
+        % Ensure persistent state does not remain partially initialized.
+        if exist('rx', 'var') && ~isempty(rx)
+            release(rx);
+        end
+        rx = [];
+        constDiag = [];
+        captureLog = [];
+        loggingEnabled = false;
+
+        if strcmp(ME.identifier, 'MATLAB:loadlibrary:LibraryNotFound') || ...
+                contains(ME.message, 'Library was not found')
+            newME = MException('runPlutoradioQPSKReceiver:PlutoUnavailable', ...
+                ['Unable to load the Analog Devices libiio library. ', ...
+                'Install the Communications Toolbox Support Package for ', ...
+                'ADI ADALM-PLUTO Radio and ensure the shared libraries are ', ...
+                'on the system path to run live captures.']);
+            newME = newME.addCause(ME);
+            throw(newME);
+        end
+
+        rethrow(ME);
+    end
+
     radio.RadioID               = prmQPSKReceiver.Address;
     radio.CenterFrequency       = prmQPSKReceiver.PlutoCenterFrequency;
     radio.BasebandSampleRate    = prmQPSKReceiver.PlutoFrontEndSampleRate;
@@ -52,24 +88,44 @@ if isempty(rx)
         'ShowReferenceConstellation', false, ...
         'XLimits', [-2 2], ...
         'YLimits', [-2 2]);
+
+    loggingEnabled = isfield(prmQPSKReceiver, 'LogCaptures') && ...
+        prmQPSKReceiver.LogCaptures;
+    if loggingEnabled
+        captureLog = struct('Metadata', struct(), 'Frames', []);
+        captureLog.Metadata.ReceiverParams = prmQPSKReceiver;
+        captureLog.Metadata.GeneratedOn = datetime('now');
+        if isfield(prmQPSKReceiver, 'CaptureScenario') && ...
+                ~isempty(prmQPSKReceiver.CaptureScenario)
+            captureLog.Metadata.Scenario = prmQPSKReceiver.CaptureScenario;
+        else
+            captureLog.Metadata.Scenario = sprintf('capture_%d', samplenum);
+        end
+        if isfield(prmQPSKReceiver, 'PowerAllocation')
+            captureLog.Metadata.PowerAllocation = prmQPSKReceiver.PowerAllocation;
+        end
+        captureLog.Metadata.FrameSize = prmQPSKReceiver.FrameSize;
+        captureLog.Metadata.HeaderLength = prmQPSKReceiver.HeaderLength;
+        captureLog.Metadata.PayloadLength = prmQPSKReceiver.PayloadLength;
+        captureLog.Metadata.ModulatedHeader = prmQPSKReceiver.ModulatedHeader;
+    end
 end
 
 % Initialize variables
 currentTime = 0;
 BER = [];
-num_frames = floor(prmQPSKReceiver.StopTime*radio.BasebandSampleRate/radio.SamplesPerFrame)
-rcvdSignal = complex(zeros(prmQPSKReceiver.PlutoFrameLength,1),num_frames);
-num_frames = floor(prmQPSKReceiver.StopTime * radio.BasebandSampleRate / radio.SamplesPerFrame);
-rcvdSignal = complex(zeros(prmQPSKReceiver.PlutoFrameLength, num_frames), ...
-    zeros(prmQPSKReceiver.PlutoFrameLength, num_frames));
+numFrames = floor(prmQPSKReceiver.StopTime * ...
+    radio.BasebandSampleRate / radio.SamplesPerFrame);
+rcvdSignal = complex(zeros(prmQPSKReceiver.PlutoFrameLength, numFrames));
 
 cnt = 1;
-while currentTime <  prmQPSKReceiver.StopTime && cnt<=num_frames
-    
+while currentTime <  prmQPSKReceiver.StopTime && cnt <= numFrames
+
     rcvdSignal(:,cnt) = radio();   % Receive signal from the radio
 
     % Decode the received message and capture the synchronized signal.
-    [rrcSignal, timingRecSignal, fineCompSignal, BER, ~] = rx(rcvdSignal(:,cnt));
+    [rrcSignal, timingRecSignal, fineCompSignal, BER, previewBits] = ...
+        rx(rcvdSignal(:,cnt));
 
     % Update the constellation diagram with the synchronized frame just
     % before decoding.
@@ -130,21 +186,48 @@ while currentTime <  prmQPSKReceiver.StopTime && cnt<=num_frames
             fprintf('\nFrame %d diagnostics: metrics unavailable (no valid symbols detected).\n', cnt);
         end
     end
-    %load RxData_Rsym_200000_Mod_4_veryclose.mat rcvdSignal
-    
-    % Decode the received message
-    [~, ~, ~, BER] = rx(rcvdSignal(:,cnt));
-    
+
+    if loggingEnabled
+        frameLog = struct();
+        frameLog.Raw = rcvdSignal(:,cnt);
+        frameLog.RRC = rrcSignal;
+        frameLog.TimingRecovered = timingRecSignal;
+        frameLog.FineCompensated = fineCompSignal;
+        frameLog.BER = BER;
+        if ~isempty(previewBits)
+            frameLog.DescrambledBits = previewBits;
+        end
+        captureLog.Frames = [captureLog.Frames frameLog]; %#ok<AGROW>
+    end
+
     % Update simulation time
-    currentTime=currentTime+(radio.SamplesPerFrame / radio.BasebandSampleRate);
-    cnt = cnt+1;
+    currentTime = currentTime + (radio.SamplesPerFrame / radio.BasebandSampleRate);
+    cnt = cnt + 1;
 end
 
 release(rx);
 release(radio);
+rx = [];
+radio = [];
 if ~isempty(constDiag)
     release(constDiag);
+    constDiag = [];
 end
 
-% filename = ['RxData_Rsym_' num2str(prmQPSKReceiver.Rsym) '_Mod_' num2str(prmQPSKReceiver.ModulationOrder) '_BER_' num2str(ceil(BER(1)*100)) '_sample_' num2str(samplenum) '_veryclose'];
-% save(filename) 
+if loggingEnabled
+    captureFile = '';
+    if isfield(prmQPSKReceiver, 'CaptureFilename') && ...
+            ~isempty(prmQPSKReceiver.CaptureFilename)
+        captureFile = prmQPSKReceiver.CaptureFilename;
+    end
+    if isempty(captureFile)
+        captureFile = sprintf('noma_capture_%s.mat', ...
+            datestr(now, 'yyyymmdd_HHMMSS'));
+    end
+
+    save(captureFile, 'captureLog', 'prmQPSKReceiver');
+    fprintf('Saved capture log to %s\n', captureFile);
+    captureLog = [];
+    loggingEnabled = false;
+end
+end
