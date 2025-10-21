@@ -21,6 +21,8 @@ SimParams.PayloadLength   = SimParams.NumberOfMessage * SimParams.MessageLength 
 SimParams.FrameSize       = (SimParams.HeaderLength + SimParams.PayloadLength) ...
     / log2(SimParams.ModulationOrder);                                    % Frame size in symbols
 SimParams.FrameTime       = SimParams.Tsym*SimParams.FrameSize;
+SimParams.ModulatedHeader = sqrt(2)/2 * (-1-1i) * ...
+    repmat(SimParams.BarkerCode(:), 2, 1);
 
 %% Rx parameters
 SimParams.RolloffFactor     = r_off;                      % Rolloff Factor of Raised Cosine Filter
@@ -71,3 +73,7 @@ SimParams.PlutoFrameLength          = SimParams.Interpolation * SimParams.FrameS
 SimParams.PlutoFrameTime = SimParams.PlutoFrameLength / SimParams.PlutoFrontEndSampleRate;
 SimParams.StopTime = 10;
 SimParams.LogSignalMetrics = verb;           % Enable verbose per-frame diagnostics when true
+SimParams.LogCaptures = false;
+SimParams.CaptureFilename = '';
+SimParams.CaptureScenario = '';
+SimParams.EnablePreview = false;
