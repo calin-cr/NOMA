@@ -27,7 +27,6 @@ classdef (StrictDefaults) QPSKTransmitter_NOMA < matlab.System
         Message2 = "Chao world";
         PowerUser1 = 0.8;
         PowerUser2 = 0.2;
-        PhaseOffset = pi/4;
     end
 
     properties (Access = private)
@@ -37,6 +36,8 @@ classdef (StrictDefaults) QPSKTransmitter_NOMA < matlab.System
         pPayloadSrc2
         pScrambler1
         pScrambler2
+        pQPSKMod1
+        pQPSKMod2
         pTxFilter1
         pTxFilter2
     end
@@ -79,6 +80,12 @@ classdef (StrictDefaults) QPSKTransmitter_NOMA < matlab.System
             obj.pScrambler2 = comm.Scrambler(obj.ScramblerBase, ...
                 obj.ScramblerPolynomial, obj.ScramblerInitialConditions);
 
+            % QPSK modulators
+            obj.pQPSKMod1 = comm.QPSKModulator('BitInput', true, ...
+                'PhaseOffset', pi/4, 'OutputDataType', 'double');
+            obj.pQPSKMod2 = comm.QPSKModulator('BitInput', true, ...
+                'PhaseOffset', pi/4, 'OutputDataType', 'double');
+
             % Raised cosine filters (same parameters as legacy transmitter)
             obj.pTxFilter1 = comm.RaisedCosineTransmitFilter( ...
                 'RolloffFactor', obj.RolloffFactor, ...
@@ -95,14 +102,14 @@ classdef (StrictDefaults) QPSKTransmitter_NOMA < matlab.System
             payloadBits1 = obj.pPayloadSrc1();
             scrambledPayload1 = obj.pScrambler1(payloadBits1);
             frameBits1 = [obj.pUser1Cfg.HeaderBits; scrambledPayload1];
-            symbols1 = obj.modulateQPSK(frameBits1);
+            symbols1 = obj.pQPSKMod1(frameBits1);
             waveform1 = obj.pTxFilter1(symbols1);
 
             % User 2 (low-power / strong user)
             payloadBits2 = obj.pPayloadSrc2();
             scrambledPayload2 = obj.pScrambler2(payloadBits2);
             frameBits2 = [obj.pUser2Cfg.HeaderBits; scrambledPayload2];
-            symbols2 = obj.modulateQPSK(frameBits2);
+            symbols2 = obj.pQPSKMod2(frameBits2);
             waveform2 = obj.pTxFilter2(symbols2);
 
             transmittedSignal = sqrt(obj.PowerUser1) * waveform1 + ...
@@ -114,6 +121,8 @@ classdef (StrictDefaults) QPSKTransmitter_NOMA < matlab.System
             reset(obj.pPayloadSrc2);
             reset(obj.pScrambler1);
             reset(obj.pScrambler2);
+            reset(obj.pQPSKMod1);
+            reset(obj.pQPSKMod2);
             reset(obj.pTxFilter1);
             reset(obj.pTxFilter2);
         end
@@ -123,27 +132,14 @@ classdef (StrictDefaults) QPSKTransmitter_NOMA < matlab.System
             release(obj.pPayloadSrc2);
             release(obj.pScrambler1);
             release(obj.pScrambler2);
+            release(obj.pQPSKMod1);
+            release(obj.pQPSKMod2);
             release(obj.pTxFilter1);
             release(obj.pTxFilter2);
         end
 
         function num = getNumInputsImpl(~)
             num = 0;
-        end
-    end
-    
-    methods (Access = private)
-        function symbols = modulateQPSK(obj, bits)
-            bitMatrix = obj.reshapeBits(bits);
-            symbols = pskmod(bitMatrix, 4, obj.PhaseOffset, 'gray', 'InputType', 'bit');
-        end
-
-        function bitMatrix = reshapeBits(~, bitVector)
-            if rem(numel(bitVector), 2) ~= 0
-                error('QPSKTransmitter_NOMA:BitAlignment', ...
-                    'Frame bit count (%d) must be even for QPSK modulation.', numel(bitVector));
-            end
-            bitMatrix = reshape(bitVector, 2, []).';
         end
     end
 end

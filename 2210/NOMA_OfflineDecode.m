@@ -41,14 +41,17 @@ payloadBitCount  = user1Cfg.PayloadBitCount;
 rxFilterDelay    = filterSpan/2;              % In output symbols (Decimation = sps)
 
 %% Common signal processing objects
+qpskMod = comm.QPSKModulator('BitInput', true, 'PhaseOffset', phaseOffset, ...
+    'OutputDataType', 'double');
+qpskDemod = comm.QPSKDemodulator('BitOutput', true, 'PhaseOffset', phaseOffset);
+
 rxFilterStrong = comm.RaisedCosineReceiveFilter('RolloffFactor', rolloff, ...
     'FilterSpanInSymbols', filterSpan, 'InputSamplesPerSymbol', upsampleFactor, ...
     'DecimationFactor', upsampleFactor);
 rxFilterWeak   = clone(rxFilterStrong);
 
-descramblerWeakStrong = comm.Descrambler(scramblerBase, scramblerPolynomial, scramblerInitialConditions);
-descramblerWeakWeak   = clone(descramblerWeakStrong);
-descramblerStrong     = comm.Descrambler(scramblerBase, scramblerPolynomial, scramblerInitialConditions);
+descramblerWeak = comm.Descrambler(scramblerBase, scramblerPolynomial, scramblerInitialConditions);
+descramblerStrong = comm.Descrambler(scramblerBase, scramblerPolynomial, scramblerInitialConditions);
 
 txFilterWeak   = comm.RaisedCosineTransmitFilter('RolloffFactor', rolloff, ...
     'FilterSpanInSymbols', filterSpan, 'OutputSamplesPerSymbol', upsampleFactor);
@@ -66,39 +69,34 @@ functionBits = @(bits) bits(headerBitCount+1:headerBitCount+payloadBitCount);
 %% Strong capture: decode weak user then strong user (SIC)
 reset(rxFilterStrong);
 matchedStrong = extractSymbols(rxFilterStrong, yStrong);
-matchedStrong = selectFrameSymbols(matchedStrong, rxFilterDelay, frameSymbolCount);
+matchedStrong = matchedStrong(rxFilterDelay+1:rxFilterDelay+frameSymbolCount);
 
-weakBitsScrambledStrong = demodulateQPSK(matchedStrong, phaseOffset);
-reset(descramblerWeakStrong);
-weakPayloadStrong = descramblerWeakStrong(functionBits(weakBitsScrambledStrong));
+weakBitsScrambledStrong = qpskDemod(matchedStrong);
+weakPayloadStrong = descramblerWeak(functionBits(weakBitsScrambledStrong));
 
 % Reconstruct weak user waveform for interference cancellation
 reset(txFilterWeak);
-weakSymbolsHat = modulateQPSK(weakBitsScrambledStrong, phaseOffset);
+weakSymbolsHat = qpskMod(weakBitsScrambledStrong);
 weakWaveformHat = txFilterWeak(weakSymbolsHat);
 
 % Subtract weak user contribution from the raw strong capture
-yStrongClean = yStrong;
-lenCommon = min(length(yStrongClean), length(weakWaveformHat));
-yStrongClean(1:lenCommon) = yStrongClean(1:lenCommon) - sqrt(P1) * weakWaveformHat(1:lenCommon);
+yStrongClean = yStrong(1:length(weakWaveformHat)) - sqrt(P1) * weakWaveformHat;
 
 % Decode strong user after SIC
 reset(rxFilterStrong);
 matchedStrongClean = extractSymbols(rxFilterStrong, yStrongClean);
-matchedStrongClean = selectFrameSymbols(matchedStrongClean, rxFilterDelay, frameSymbolCount);
+matchedStrongClean = matchedStrongClean(rxFilterDelay+1:rxFilterDelay+frameSymbolCount);
 
-strongBitsScrambled = demodulateQPSK(matchedStrongClean, phaseOffset);
-reset(descramblerStrong);
+strongBitsScrambled = qpskDemod(matchedStrongClean);
 strongPayloadBits = descramblerStrong(functionBits(strongBitsScrambled));
 
 %% Weak capture: decode weak user directly (treat interference as noise)
 reset(rxFilterWeak);
 matchedWeak = extractSymbols(rxFilterWeak, yWeak);
-matchedWeak = selectFrameSymbols(matchedWeak, rxFilterDelay, frameSymbolCount);
+matchedWeak = matchedWeak(rxFilterDelay+1:rxFilterDelay+frameSymbolCount);
 
-weakBitsScrambledWeak = demodulateQPSK(matchedWeak, phaseOffset);
-reset(descramblerWeakWeak);
-weakPayloadWeak = descramblerWeakWeak(functionBits(weakBitsScrambledWeak));
+weakBitsScrambledWeak = qpskDemod(matchedWeak);
+weakPayloadWeak = descramblerWeak(functionBits(weakBitsScrambledWeak));
 
 %% Compute BER values
 [errWeakStrong, berWeakStrong] = biterr(user1Cfg.PayloadBits, weakPayloadStrong);
@@ -152,45 +150,4 @@ function messages = bitsToString(bitVector, msgLength)
         idx = (k-1)*charsPerMsg + (1:charsPerMsg);
         messages{k} = charArray(idx).';
     end
-end
-
-function frameSymbols = selectFrameSymbols(symbolStream, rxDelay, frameSymbolCount)
-    totalSymbols = numel(symbolStream);
-    if totalSymbols < frameSymbolCount
-        error('NOMA_OfflineDecode:ShortCapture', ...
-            ['Capture does not contain a full framed transmission. ', ...
-             'Available symbols: %d, expected: %d.'], totalSymbols, frameSymbolCount);
-    end
-
-    if totalSymbols >= rxDelay + frameSymbolCount
-        startIdx = rxDelay + 1;
-    else
-        deficit = rxDelay + frameSymbolCount - totalSymbols;
-        warning('NOMA_OfflineDecode:DelayTruncated', ...
-            ['Matched-filter delay exceeds captured symbols by %d. ', ...
-             'Falling back to the last complete frame.'], deficit);
-        startIdx = totalSymbols - frameSymbolCount + 1; % fall back to final frame
-    end
-
-    endIdx = startIdx + frameSymbolCount - 1;
-    frameSymbols = symbolStream(startIdx:endIdx);
-end
-
-function symbols = modulateQPSK(bits, phaseOffset)
-    bitMatrix = ensureBitMatrix(bits, 2);
-    symbols = pskmod(bitMatrix, 4, phaseOffset, 'gray', 'InputType', 'bit');
-end
-
-function bits = demodulateQPSK(symbols, phaseOffset)
-    bitMatrix = pskdemod(symbols, 4, phaseOffset, 'gray', 'OutputType', 'bit');
-    bits = reshape(bitMatrix.', [], 1);
-end
-
-function bitMatrix = ensureBitMatrix(bitVector, bitsPerSymbol)
-    if rem(numel(bitVector), bitsPerSymbol) ~= 0
-        error('NOMA_OfflineDecode:BitAlignment', ...
-            'Bit vector length (%d) is not divisible by %d.', ...
-            numel(bitVector), bitsPerSymbol);
-    end
-    bitMatrix = reshape(bitVector, bitsPerSymbol, []).';
 end
